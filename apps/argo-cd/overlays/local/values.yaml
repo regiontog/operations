@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: values
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  domain: argocd.localho.st
+  ingressHttpsPort: 8443
+  certIssuer: selfsigned-cluster-issuer
+  certIssuerKind: ClusterIssuer

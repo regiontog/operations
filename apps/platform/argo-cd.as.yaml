@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: argo-cd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusterDecisionResource:
+        configMapRef: cluster-appdecision
+        labelSelector:
+          matchLabels:
+            type.app-decisions.example.com: "cluster"
+        # Checks for changes every 60sec (default 3min)
+        requeueAfterSeconds: 60
+  template:
+    metadata:
+      name: argo-cd-{{ .env }}
+    spec:
+      project: default
+      source:
+        path: apps/argo-cd/overlays/{{ .env }}
+        repoURL: "{{ .repoURL }}"
+        targetRevision: "{{ .targetRevision }}"
+      destination:
+        namespace: argocd
+        server: "{{ .server }}"
+      syncPolicy:
+        automated:
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

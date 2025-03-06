@@ -1,0 +1,17 @@
+source:
+  kind: ConfigMap
+  name: values
+  fieldPath: data.domain
+targets:
+  - select:
+      kind: Certificate
+    fieldPaths:
+      - spec.dnsNames.[=ARGOCD_DOMAIN]
+  - select:
+      kind: VirtualService
+    fieldPaths:
+      - spec.hosts.[=ARGOCD_DOMAIN]
+  - select:
+      kind: Gateway
+    fieldPaths:
+      - spec.servers.*.hosts.[=ARGOCD_DOMAIN]

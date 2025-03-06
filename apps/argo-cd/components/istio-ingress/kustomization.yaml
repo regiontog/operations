@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1 # <-- Component notation
+kind: Component
+
+resources:
+  - networking.yaml
+
+patches:
+  - path: params.yaml
+
+replacements:
+  - path: apply-domain.yaml
+  - path: apply-ingress-port.yaml
+  - path: apply-issuer-name.yaml
+  - path: apply-issuer-kind.yaml

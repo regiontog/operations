@@ -1,0 +1,9 @@
+source:
+  kind: ConfigMap
+  name: values
+  fieldPath: data.ingressHttpsPort
+targets:
+  - select:
+      kind: Gateway
+    fieldPaths:
+      - spec.servers.[port=https-ingress].port.number
