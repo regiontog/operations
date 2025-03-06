@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: local
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusterDecisionResource:
+        configMapRef: cluster-appdecision
+        labelSelector:
+          matchLabels:
+            type.app-decisions.example.com: "cluster"
+        # Checks for changes every 60sec (default 3min)
+        requeueAfterSeconds: 60
+  template:
+    metadata:
+      name: "root-{{ .env }}"
+    spec:
+      destination:
+        namespace: argocd
+        server: "{{ .server }}"
+      project: default
+      source:
+        path: app-of-apps/
+        repoURL: "{{ .repoURL }}"
+        targetRevision: "{{ .targetRevision }}"
+      syncPolicy:
+        automated:
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

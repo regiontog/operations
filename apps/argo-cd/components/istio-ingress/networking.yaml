@@ -1,0 +1,46 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: argocd
+  namespace: istio-ingress
+spec:
+  secretName: argocd-tls
+  dnsNames:
+    - ARGOCD_DOMAIN
+  issuerRef:
+    name: ARGOCD_CERT_ISSUER_NAME
+    kind: ARGOCD_CERT_ISSUER_KIND
+
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: argocd-vs
+spec:
+  hosts:
+    - ARGOCD_DOMAIN
+  gateways:
+    - argocd-gateway
+  http:
+    - route:
+        - destination:
+            host: argocd-server
+            port:
+              number: 80
+
+---
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: argocd-gateway
+spec:
+  servers:
+    - port:
+        number: 0
+        name: https-ingress
+        protocol: HTTPS
+      hosts:
+        - ARGOCD_DOMAIN
+      tls:
+        mode: SIMPLE
+        credentialName: argocd-tls

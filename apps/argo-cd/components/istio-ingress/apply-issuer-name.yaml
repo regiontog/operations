@@ -1,0 +1,9 @@
+source:
+  kind: ConfigMap
+  name: values
+  fieldPath: data.certIssuer
+targets:
+  - select:
+      kind: Certificate
+    fieldPaths:
+      - spec.issuerRef.name

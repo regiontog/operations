@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: cert-manager
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusterDecisionResource:
+        configMapRef: cluster-appdecision
+        labelSelector:
+          matchLabels:
+            type.app-decisions.example.com: "cluster"
+        # Checks for changes every 60sec (default 3min)
+        requeueAfterSeconds: 60
+  template:
+    metadata:
+      name: cert-manager-{{ .env }}
+    spec:
+      project: default
+      source:
+        path: apps/cert-manager/overlays/{{ .env }}
+        repoURL: "{{ .repoURL }}"
+        targetRevision: "{{ .targetRevision }}"
+      destination:
+        namespace: cert-manager
+        server: "{{ .server }}"
+      syncPolicy:
+        automated:
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

@@ -1,0 +1,203 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: istio-base
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusterDecisionResource:
+        configMapRef: cluster-appdecision
+        labelSelector:
+          matchLabels:
+            type.app-decisions.example.com: "cluster"
+        # Checks for changes every 60sec (default 3min)
+        requeueAfterSeconds: 60
+  template:
+    metadata:
+      name: istio-base
+    spec:
+      destination:
+        server: "{{ .server }}"
+        namespace: istio-system
+      project: default
+      source:
+        chart: base
+        repoURL: https://istio-release.storage.googleapis.com/charts
+        targetRevision: "1.25.0"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+      ignoreDifferences:
+        - group: admissionregistration.k8s.io
+          kind: ValidatingWebhookConfiguration
+          jsonPointers:
+            - /webhooks/0/failurePolicy
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: istio-cni
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusterDecisionResource:
+        configMapRef: cluster-appdecision
+        labelSelector:
+          matchLabels:
+            type.app-decisions.example.com: "cluster"
+        # Checks for changes every 60sec (default 3min)
+        requeueAfterSeconds: 60
+  template:
+    metadata:
+      name: istio-cni
+    spec:
+      destination:
+        server: "{{ .server }}"
+        namespace: kube-system
+      project: default
+      source:
+        chart: cni
+        repoURL: https://istio-release.storage.googleapis.com/charts
+        targetRevision: "1.25.0"
+        helm:
+          values: |
+            profile: ambient
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: istiod
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusterDecisionResource:
+        configMapRef: cluster-appdecision
+        labelSelector:
+          matchLabels:
+            type.app-decisions.example.com: "cluster"
+        # Checks for changes every 60sec (default 3min)
+        requeueAfterSeconds: 60
+  template:
+    metadata:
+      name: istiod
+    spec:
+      destination:
+        server: "{{ .server }}"
+        namespace: istio-system
+      project: default
+      source:
+        chart: istiod
+        repoURL: https://istio-release.storage.googleapis.com/charts
+        targetRevision: "1.25.0"
+        helm:
+          values: |
+            profile: ambient
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+      ignoreDifferences:
+        - group: admissionregistration.k8s.io
+          kind: ValidatingWebhookConfiguration
+          jsonPointers:
+            - /webhooks/0/failurePolicy
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: istio-ztunnel
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusterDecisionResource:
+        configMapRef: cluster-appdecision
+        labelSelector:
+          matchLabels:
+            type.app-decisions.example.com: "cluster"
+        # Checks for changes every 60sec (default 3min)
+        requeueAfterSeconds: 60
+  template:
+    metadata:
+      name: istio-ztunnel
+    spec:
+      destination:
+        server: "{{ .server }}"
+        namespace: istio-system
+      project: default
+      source:
+        chart: ztunnel
+        repoURL: https://istio-release.storage.googleapis.com/charts
+        targetRevision: "1.25.0"
+        helm:
+          values: |
+            resourceName: ztunnel
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: istio-gateway
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - clusterDecisionResource:
+        configMapRef: cluster-appdecision
+        labelSelector:
+          matchLabels:
+            type.app-decisions.example.com: "cluster"
+        # Checks for changes every 60sec (default 3min)
+        requeueAfterSeconds: 60
+  template:
+    metadata:
+      name: istio-gateway
+    spec:
+      destination:
+        server: "{{ .server }}"
+        namespace: istio-ingress
+      project: default
+      source:
+        chart: gateway
+        repoURL: https://istio-release.storage.googleapis.com/charts
+        targetRevision: "1.25.0"
+        helm:
+          values: |
+            service:
+              type: ClusterIP
+              ports:
+              - name: status-port
+                port: 15021
+                protocol: TCP
+                targetPort: 15021
+              - name: http2
+                port: 8080
+                protocol: TCP
+                targetPort: 80
+              - name: https
+                port: 8443
+                protocol: TCP
+                targetPort: 443
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
