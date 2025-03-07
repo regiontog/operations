@@ -5,7 +5,7 @@ tasks:
     desc: Serves this git directory so that it is accessible to the minikube host so that ArgoCD can be useful in local development clusters where we don't have a remote repo. Uses python http.server with cgi passthrough to `git-http-backend` because ArgoCD requires git smart http. Git will be served on http://host.minikube.internal:5555/cgi-bin/git
     vars:
       GIT_IP:
-        sh: minikube ssh -- "awk '\$2 == \"host.minikube.internal\" {print \$1}' /etc/hosts"
+        sh: {{ if eq .OS "Windows_NT" }}0.0.0.0{{else}}minikube ssh -- "awk '\$2 == \"host.minikube.internal\" {print \$1}' /etc/hosts"{{end}}
     cmds:
       - git-serve {{ .GIT_IP }} 5555
 
@@ -17,13 +17,16 @@ tasks:
     prompt: Bootstrapping is potentially destructive to the kubernetes cluster, ensure current context is correct. Bootstrapping argocd, root appset, and applying cluster config `clusters/{{ .CLI_ARGS }}.cluster.yaml` to kubectl context `{{ .CONTEXT }}`. Run with --dry to see kubectl commands. Are you sure?`
     cmds:
       - kubectl --context {{ .CONTEXT }} apply --kustomize apps/reloader
-      - sleep 1
+      - cmd: sleep 1
+        platforms: [linux]
+      - cmd: PowerShell sleep 1
+        platforms: [windows]
       - kubectl --context {{ .CONTEXT }} wait pods -n reloader -l app=reloader-reloader --for condition=Ready --timeout=90s
       - kubectl --context {{ .CONTEXT }} apply --kustomize apps/argo-cd/base
       - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for condition=established --timeout=60s crd/applicationsets.argoproj.io
       - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for condition=established --timeout=60s crd/appdecisions.app-decisions.example.com
       - kubectl --context {{ .CONTEXT }} apply -f clusters/{{ .CLI_ARGS }}.cluster.yaml
-      - kubectl --context {{ .CONTEXT }} apply -f {{ .ROOT_DIR }}/app-of-apps/root.as.yaml
+      - kubectl --context {{ .CONTEXT }} apply -f app-of-apps/root.as.yaml
 
   tunnel:
     desc: Port forwards *.localho.st:8443 and *.localho.st:8080 to the istio ingress service
@@ -36,4 +39,4 @@ tasks:
       REPO: "http://host.minikube.internal:5555/"
       ARGOCD_SERVER: "https://argocd.localho.st:8443"
     cmds:
-      - watchexec -i .git/heads/* -- argocd-webhook-trigger {{ .REPO }} {{ .ARGOCD_SERVER }} -k
+      - watchexec -i .git/refs/heads/* -- argocd-webhook-trigger {{ .REPO }} {{ .ARGOCD_SERVER }} -k
