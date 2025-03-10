@@ -1,14 +1,22 @@
 version: "3"
 
 tasks:
+  get-deps:
+    desc: Installs rust dependencies
+    cmds:
+      - cargo install watchexec-cli
+      - cargo install git-serve
+      - cargo install argocd-webhook-trigger
+
   git-serve:
     desc: Serves this git directory so that it is accessible to the minikube host so that ArgoCD can be useful in local development clusters where we don't have a remote repo. Uses python http.server with cgi passthrough to `git-http-backend` because ArgoCD requires git smart http. Git will be served on http://host.minikube.internal:5555/cgi-bin/git
     vars:
+      GIT_PORT: 5555
       GIT_IP:
         sh: |-
           {{ if eq .OS "Windows_NT" }}echo 0.0.0.0{{else}}minikube ssh -- "awk '\$2 == \"host.minikube.internal\" {print \$1}' /etc/hosts"{{end}}
     cmds:
-      - git-serve {{ .GIT_IP }} 5555
+      - git-serve {{ .GIT_IP }} {{ .GIT_PORT }}
 
   bootstrap:
     desc: Applies all kubernetes resources needed to bootstrap a given cluster. Run like `task bootstrap -- local`
@@ -18,27 +26,31 @@ tasks:
     prompt: Bootstrapping is potentially destructive to the kubernetes cluster, ensure current context is correct. Bootstrapping argocd, root appset, and applying cluster config `clusters/{{ .CLI_ARGS }}.cluster.yaml` to kubectl context `{{ .CONTEXT }}`. Run with --dry to see kubectl commands. Are you sure?`
     cmds:
       - kubectl --context {{ .CONTEXT }} apply --kustomize apps/reloader
-      - cmd: sleep 1
-        platforms: [linux]
-      - cmd: PowerShell sleep 1
-        platforms: [windows]
-      - kubectl --context {{ .CONTEXT }} wait pods -n reloader -l app=reloader-reloader --for condition=Ready --timeout=90s
+      - kubectl --context {{ .CONTEXT }} wait -n reloader --for create pods -l app=reloader-reloader --timeout=90s
+      - kubectl --context {{ .CONTEXT }} wait -n reloader --for condition=Ready pods -l app=reloader-reloader --timeout=90s
       - kubectl --context {{ .CONTEXT }} apply --kustomize apps/argo-cd/base
+      - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for create --timeout=60s crd/applicationsets.argoproj.io
       - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for condition=established --timeout=60s crd/applicationsets.argoproj.io
+      - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for create --timeout=60s crd/appdecisions.app-decisions.example.com
       - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for condition=established --timeout=60s crd/appdecisions.app-decisions.example.com
       - kubectl --context {{ .CONTEXT }} apply -f clusters/{{ .CLI_ARGS }}.cluster.yaml
       - kubectl --context {{ .CONTEXT }} apply -f app-of-apps/root.as.yaml
 
   tunnel:
     desc: Port forwards *.localho.st:8443 and *.localho.st:8080 to the istio ingress service
+    vars:
+      INGRESS_HTTPS_PORT: 8443
+      INGRESS_HTTP_PORT: 8080
     cmds:
       - kubectl wait -n istio-ingress --for=create svc/istio-gateway --timeout=120s
-      - kubectl port-forward -n istio-ingress --address localhost svc/istio-gateway 8443:8443 8080:8080
+      - kubectl port-forward -n istio-ingress --address localhost svc/istio-gateway {{ .INGRESS_HTTPS_PORT }}:8443 {{ .INGRESS_HTTP_PORT }}:8080
 
   refresh:
-    desc: Sends webhook to local argocd (https://argocd.localho.st:8443) telling it to refresh the apps that changed in the last commit. Supports watching for new commits with -w flag
+    desc: Sends webhook to local argocd (https://argocd.localho.st:8443) telling it to refresh the apps that changed in the last commit. Watches for new commits
     vars:
-      REPO: "http://host.minikube.internal:5555/.git"
-      ARGOCD_SERVER: "https://argocd.localho.st:8443"
+      GIT_PORT: 5555
+      INGRESS_HTTPS_PORT: 8443
+      REPO: "http://host.minikube.internal:{{ .GIT_PORT }}/.git"
+      ARGOCD_SERVER: "https://argocd.localho.st:{{ .INGRESS_HTTPS_PORT }}"
     cmds:
       - watchexec -i .git/refs/heads/* -- argocd-webhook-trigger {{ .REPO }} {{ .ARGOCD_SERVER }} -k
