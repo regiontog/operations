@@ -9,11 +9,20 @@ cargo install argocd-webhook-trigger
 # Bootstrap local cluster
 
 ```bash
-$ minikube start --driver docker # Start k8s cluster
-$ task git-serve &               # Serve the local git repo in the background (required for local development)
+# Start k8s cluster
+$ minikube start --driver docker --extra-config=kubelet.housekeeping-interval=10s 
+
+# Serve the local git repo in the background (required for local development)
+$ task git-serve &
+
+# Bootstrap the kubernetes cluster
 $ task bootstrap -- local
-$ task tunnel &                  # Open a tunnel from localhost to the istio gateway on ports 8443:443 and 8080:80
-$ task refresh &                 # Refresh argocd apps on local commit in the background (so we don't have to wait 3 minutes)
+
+# Open a tunnel from localhost to the istio gateway on ports 8443:443 and 8080:80
+$ task tunnel &
+
+# Refresh argocd apps on local commit in the background (so we don't have to wait 3 minutes)
+$ task refresh &
 ```
 
 # Troubleshooting

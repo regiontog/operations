@@ -104,6 +104,9 @@ spec:
         helm:
           values: |
             profile: ambient
+            resources:
+              requests:
+                memory: 400Mi
       syncPolicy:
         automated:
           prune: true

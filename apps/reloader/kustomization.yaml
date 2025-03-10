@@ -6,3 +6,6 @@ namespace: reloader
 resources:
   - namespace.yaml
   - https://github.com/stakater/Reloader/deployments/kubernetes
+
+patches:
+  - path: resources.yaml

@@ -7,7 +7,7 @@ metadata:
     type.app-decisions.example.com: "cluster"
 status:
   decisions:
-    - repoURL: "http://host.minikube.internal:5555"
+    - repoURL: "http://host.minikube.internal:5555/.git"
       targetRevision: HEAD
       server: https://kubernetes.default.svc
       clusterName: in-cluster
