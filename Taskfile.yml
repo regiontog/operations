@@ -35,6 +35,12 @@ tasks:
       - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for condition=established --timeout=60s crd/appdecisions.app-decisions.example.com
       - kubectl --context {{ .CONTEXT }} apply -f clusters/{{ .CLI_ARGS }}.cluster.yaml
       - kubectl --context {{ .CONTEXT }} apply -f app-of-apps/root.as.yaml
+      - task: patch-secrets
+        vars:
+          CONTEXT: "{{ .CONTEXT }}"
+          SECRET_NS: keycloak
+          SECRET_NAME: postgres-admin
+          SECRET_KEY: password
 
   tunnel:
     desc: Port forwards *.localho.st:8443 and *.localho.st:8080 to the istio ingress service
@@ -44,6 +50,20 @@ tasks:
     cmds:
       - kubectl wait -n istio-ingress --for=create svc/istio-gateway --timeout=120s
       - kubectl port-forward -n istio-ingress --address localhost svc/istio-gateway {{ .INGRESS_HTTPS_PORT }}:8443 {{ .INGRESS_HTTP_PORT }}:8080
+
+  patch-secrets:
+    desc: Update secrets with random values
+    vars:
+      CONTEXT: na
+      SECRET_NS: na
+      SECRET_NAME: na
+      SECRET_KEY: na
+      SECRET_VALUE:
+        sh: minikube ssh 'cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 28 | head -n 1'
+    cmds:
+      # - kubectl wait -n {{ .SECRET_NS }} --for=create secret/{{ .SECRET_NAME }} --timeout=10m
+      - |-
+        kubectl patch -n {{ .SECRET_NS }} secret {{ .SECRET_NAME }} --patch='{"stringData": { {{ .SECRET_KEY | toJson }}: {{ .SECRET_VALUE | toJson }} }}'
 
   refresh:
     desc: Sends webhook to local argocd (https://argocd.localho.st:8443) telling it to refresh the apps that changed in the last commit. Watches for new commits
