@@ -53,29 +53,6 @@ tasks:
     cmds:
       - BOOTSTRAP_CONTEXT='{{ .CONTEXT }}' apps/cluster-bootstrap/bin/run.sh '{{ .CLUSTER }}'
 
-  bootstrap-host:
-    desc: Applies bootstrap resources from the host. Run like `task bootstrap-host
-      -- dev`
-    vars:
-      CONTEXT:
-        sh: kubectl config current-context
-      CLUSTER: '{{ default "dev" .CLI_ARGS }}'
-    prompt: Bootstrapping is potentially destructive to the kubernetes cluster,
-      ensure current context is correct. Bootstrapping argocd, root appset, and
-      applying cluster config `clusters/{{ .CLUSTER }}.cluster.yaml` to kubectl
-      context `{{ .CONTEXT }}`. Run with --dry to see kubectl commands. Are you
-      sure?`
-    cmds:
-      - kubectl --context {{ .CONTEXT }} --server-side=true apply --kustomize apps/argo-cd/base --force-conflicts
-      - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for create --timeout=60s crd/applicationsets.argoproj.io
-      - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for condition=established --timeout=60s crd/applicationsets.argoproj.io
-      - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for create --timeout=60s crd/appdecisions.app-decisions.example.com
-      - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for condition=established --timeout=60s crd/appdecisions.app-decisions.example.com
-      - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for condition=ready --timeout=60s pods -l app.kubernetes.io/name=argocd-repo-server
-      - kubectl --context {{ .CONTEXT }} --server-side=true apply -f clusters/{{ .CLUSTER }}.cluster.yaml --force-conflicts
-      - kubectl config set-context --current --namespace=argocd
-      - find app-of-apps -name '*.as.yaml' -exec argocd --core --kube-context {{ .CONTEXT }} appset create {} --upsert ';'
-
   refresh:
     desc: Sends webhook to local argocd (https://argocd.localho.st:8443) telling it
       to refresh the apps that changed in the last commit. Watches for new

@@ -6,7 +6,7 @@ cargo install watchexec-cli
 mise install
 ```
 
-System dependencies: Docker, curl, and jq.
+System dependencies outside mise: Docker and jq.
 
 # Bootstrap a cluster
 
@@ -22,7 +22,7 @@ $ task refresh &
 ```
 
 The bootstrap image registry currently assumes a single-node cluster. The host
-pushes to `localhost:5000` through `kubectl port-forward`, and the node pulls the
+pushes to `127.0.0.1:5000` through `kubectl port-forward`, and the node pulls the
 same image from `localhost:5000` because the registry pod uses host networking.
 This can work for local or remote single-node clusters, but multi-node clusters
 will need a stable registry endpoint and container runtime trust/configuration on

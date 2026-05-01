@@ -2,5 +2,4 @@
 k9s = "latest"
 kubectl = "latest"
 task = "latest"
-argocd = "latest"
 shellcheck = "latest"

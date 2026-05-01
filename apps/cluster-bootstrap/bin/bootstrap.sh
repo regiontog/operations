@@ -35,8 +35,10 @@ find app-of-apps -name '*.as.yaml' -type f | sort | while IFS= read -r appset; d
   kubectl -n argocd --server-side=true apply -f "${appset}" --force-conflicts
 done
 
-echo "Waiting for Forgejo credentials"
+echo "Waiting for Forgejo"
 kubectl -n forgejo wait --for=create --timeout=300s service/forgejo-http
+kubectl -n forgejo wait --for=create --timeout=300s deployment/forgejo
+kubectl -n forgejo rollout status deployment/forgejo --timeout=300s
 
 repo_url="$(kubectl -n argocd get appdecision "${cluster}" -o jsonpath='{.status.decisions[0].repoURL}')"
 repo_without_scheme="${repo_url#*://}"
@@ -101,14 +103,12 @@ kubectl -n argocd create secret generic forgejo-repo-creds \
   | kubectl apply -f -
 
 echo "Pushing operations repository snapshot to Forgejo"
+rm -rf .git
+git init
 git config user.name "Operations Bootstrap"
 git config user.email "operations-bootstrap@localhost"
-
-if git diff --cached --quiet; then
-  echo "No repository snapshot changes to commit"
-else
-  git commit -m "Bootstrap operations snapshot"
-fi
+git add -A
+git commit -m "Bootstrap operations snapshot"
 
 askpass="$(mktemp)"
 cat > "${askpass}" <<'EOF'
@@ -121,7 +121,6 @@ esac
 EOF
 chmod +x "${askpass}"
 
-git remote remove forgejo-bootstrap >/dev/null 2>&1 || true
 git remote add forgejo-bootstrap "${repo_url}"
 GIT_ASKPASS="${askpass}" \
   GIT_TERMINAL_PROMPT=0 \
