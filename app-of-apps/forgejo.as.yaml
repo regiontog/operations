@@ -1,8 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: keycloak
-  namespace: argocd
+  name: forgejo
 spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
@@ -16,16 +15,23 @@ spec:
         requeueAfterSeconds: 60
   template:
     metadata:
-      name: "keycloak-{{ .env }}"
+      name: forgejo-{{ .env }}
     spec:
-      destination:
-        namespace: keycloak
-        server: "{{ .server }}"
       project: default
       source:
-        path: apps/keycloak/base
-        repoURL: "{{ .repoURL }}"
-        targetRevision: "{{ .targetRevision }}"
+        chart: forgejo
+        repoURL: code.forgejo.org/forgejo-helm
+        targetRevision: "17.0.1"
+        helm:
+          releaseName: forgejo
+          values: |
+            gitea:
+              config:
+                repository:
+                  ENABLE_PUSH_CREATE_USER: true
+      destination:
+        namespace: forgejo
+        server: "{{ .server }}"
       syncPolicy:
         automated:
           selfHeal: true

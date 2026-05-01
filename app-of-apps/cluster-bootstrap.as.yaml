@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: reloader
+  name: cluster-bootstrap
 spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
@@ -15,15 +15,15 @@ spec:
         requeueAfterSeconds: 60
   template:
     metadata:
-      name: reloader
+      name: cluster-bootstrap-{{ .env }}
     spec:
       project: default
       source:
-        path: apps/reloader
+        path: apps/cluster-bootstrap/base
         repoURL: "{{ .repoURL }}"
         targetRevision: "{{ .targetRevision }}"
       destination:
-        namespace: reloader
+        namespace: bootstrap-system
         server: "{{ .server }}"
       syncPolicy:
         automated:

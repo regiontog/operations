@@ -1,76 +1,92 @@
 version: "3"
 
 tasks:
-  get-deps:
-    desc: Installs rust dependencies
-    cmds:
-      - cargo install watchexec-cli
-      - cargo install git-serve
-      - cargo install argocd-webhook-trigger
-
-  git-serve:
-    desc: Serves this git directory so that it is accessible to the minikube host so that ArgoCD can be useful in local development clusters where we don't have a remote repo. Uses python http.server with cgi passthrough to `git-http-backend` because ArgoCD requires git smart http. Git will be served on http://host.minikube.internal:5555/cgi-bin/git
+  create-cluster:
+    desc: create local development cluster
     vars:
-      GIT_PORT: 5555
-      GIT_IP:
-        sh: |-
-          {{ if eq .OS "Windows_NT" }}echo 0.0.0.0{{else}}minikube ssh -- "awk '\$2 == \"host.minikube.internal\" {print \$1}' /etc/hosts"{{end}}
+      INGRESS_API_PORT: 6443
+      CONTEXT: admin@k0s-dev
+      CLUSTER: k0s-dev
+      USER: admin@k0s-dev
+      SERVER: https://localhost:{{ .INGRESS_API_PORT }}
     cmds:
-      - git-serve {{ .GIT_IP }} {{ .GIT_PORT }}
+      - mkdir -p "$HOME/.kube"
+      - '[ -e /run/netns ] || sudo mkdir -p /run/netns'
+      - '[ -s "$HOME/.kube/config" ] || printf "apiVersion: v1\nkind: Config\npreferences: {}\nclusters: []\nusers: []\ncontexts: []\n" > "$HOME/.kube/config"'
+      - docker rm -f -v k0s-controller >/dev/null 2>&1 || true
+      - docker run -d --name k0s-controller --hostname k0s-controller --dns 1.1.1.1 --dns 8.8.8.8 --privileged -v /var/lib/k0s -v /var/log/pods --mount type=bind,source=/run/netns,target=/run/netns,bind-propagation=rshared -p {{ .INGRESS_API_PORT }}:6443 ghcr.io/k0sproject/k0s:v1.35.3-k0s.0 k0s controller --enable-worker --no-taints
+      - until docker exec k0s-controller k0s kubeconfig admin > "$HOME/.kube/k0s.raw.config" 2>/dev/null; do sleep 1; done
+      - kubectl --kubeconfig "$HOME/.kube/k0s.raw.config" config view --raw -o json | jq --arg CONTEXT '{{ .CONTEXT }}' --arg cluster '{{ .CLUSTER }}' --arg user '{{ .USER }}' --arg server '{{ .SERVER }}' '{apiVersion:"v1",kind:"Config",preferences:{},"current-context":$CONTEXT,clusters:[{name:$cluster,cluster:{server:$server,"certificate-authority-data":.clusters[0].cluster["certificate-authority-data"]}}],users:[{name:$user,user:{"client-certificate-data":.users[0].user["client-certificate-data"],"client-key-data":.users[0].user["client-key-data"]}}],contexts:[{name:$CONTEXT,context:{cluster:$cluster,user:$user}}]}' > "$HOME/.kube/k0s.config"
+      - kubectl --kubeconfig "$HOME/.kube/config" config delete-context '{{ .CONTEXT }}' >/dev/null 2>&1 || true
+      - kubectl --kubeconfig "$HOME/.kube/config" config delete-cluster '{{ .CLUSTER }}' >/dev/null 2>&1 || true
+      - kubectl --kubeconfig "$HOME/.kube/config" config delete-user '{{ .USER }}' >/dev/null 2>&1 || true
+      - KUBECONFIG="$HOME/.kube/k0s.config:$HOME/.kube/config" kubectl config view --raw --flatten > "$HOME/.kube/config.tmp"
+      - mv "$HOME/.kube/config.tmp" "$HOME/.kube/config"
+      - chmod 600 "$HOME/.kube/config" "$HOME/.kube/k0s.config"
+      - kubectl --kubeconfig "$HOME/.kube/config" config use-context '{{ .CONTEXT }}'
+      - until kubectl --kubeconfig "$HOME/.kube/config" --context '{{ .CONTEXT }}' get --raw=/readyz >/dev/null 2>&1; do sleep 2; done
+      - kubectl --kubeconfig "$HOME/.kube/config" --context '{{ .CONTEXT }}' get nodes
+      - task: setup-localstorage
+        vars:
+          CONTEXT: "{{ .CONTEXT }}"
+
+  setup-localstorage:
+    desc: Installs ranchers localstorage provisioner in the development cluster
+    vars:
+      CONTEXT:
+        ref: .CONTEXT
+    cmds:
+      - kubectl --context {{ .CONTEXT }} --server-side=true apply --kustomize apps/local-path-provisioner/base --force-conflicts
 
   bootstrap:
-    desc: Applies all kubernetes resources needed to bootstrap a given cluster. Run like `task bootstrap -- local`
+    desc: Builds the bootstrap image and runs the in-cluster bootstrap Job. Run
+      like `task bootstrap -- dev`
     vars:
       CONTEXT:
         sh: kubectl config current-context
-    prompt: Bootstrapping is potentially destructive to the kubernetes cluster, ensure current context is correct. Bootstrapping argocd, root appset, and applying cluster config `clusters/{{ .CLI_ARGS }}.cluster.yaml` to kubectl context `{{ .CONTEXT }}`. Run with --dry to see kubectl commands. Are you sure?`
+      CLUSTER: '{{ default "dev" .CLI_ARGS }}'
+    prompt: Bootstrapping is potentially destructive to the kubernetes cluster,
+      ensure current context is correct. Building and running the bootstrap Job
+      with cluster config `clusters/{{ .CLUSTER }}.cluster.yaml` on kubectl
+      context `{{ .CONTEXT }}`. Run with --dry to see kubectl commands. Are you
+      sure?`
     cmds:
-      - kubectl --context {{ .CONTEXT }} apply --kustomize apps/reloader
-      - kubectl --context {{ .CONTEXT }} wait -n reloader --for create pods -l app=reloader-reloader --timeout=90s
-      - kubectl --context {{ .CONTEXT }} wait -n reloader --for condition=Ready pods -l app=reloader-reloader --timeout=90s
-      - kubectl --context {{ .CONTEXT }} apply --kustomize apps/argo-cd/base
+      - BOOTSTRAP_CONTEXT='{{ .CONTEXT }}' apps/cluster-bootstrap/bin/run.sh '{{ .CLUSTER }}'
+
+  bootstrap-host:
+    desc: Applies bootstrap resources from the host. Run like `task bootstrap-host
+      -- dev`
+    vars:
+      CONTEXT:
+        sh: kubectl config current-context
+      CLUSTER: '{{ default "dev" .CLI_ARGS }}'
+    prompt: Bootstrapping is potentially destructive to the kubernetes cluster,
+      ensure current context is correct. Bootstrapping argocd, root appset, and
+      applying cluster config `clusters/{{ .CLUSTER }}.cluster.yaml` to kubectl
+      context `{{ .CONTEXT }}`. Run with --dry to see kubectl commands. Are you
+      sure?`
+    cmds:
+      - kubectl --context {{ .CONTEXT }} --server-side=true apply --kustomize apps/argo-cd/base --force-conflicts
       - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for create --timeout=60s crd/applicationsets.argoproj.io
       - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for condition=established --timeout=60s crd/applicationsets.argoproj.io
       - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for create --timeout=60s crd/appdecisions.app-decisions.example.com
       - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for condition=established --timeout=60s crd/appdecisions.app-decisions.example.com
-      - kubectl --context {{ .CONTEXT }} apply -f clusters/{{ .CLI_ARGS }}.cluster.yaml
-      - kubectl --context {{ .CONTEXT }} apply -f app-of-apps/root.as.yaml
-      - task: patch-secrets
-        vars:
-          CONTEXT: "{{ .CONTEXT }}"
-          SECRET_NS: keycloak
-          SECRET_NAME: postgres-admin
-          SECRET_KEY: password
-
-  tunnel:
-    desc: Port forwards *.localho.st:8443 and *.localho.st:8080 to the istio ingress service
-    vars:
-      INGRESS_HTTPS_PORT: 8443
-      INGRESS_HTTP_PORT: 8080
-    cmds:
-      - kubectl wait -n istio-ingress --for=create svc/istio-gateway --timeout=120s
-      - kubectl port-forward -n istio-ingress --address localhost svc/istio-gateway {{ .INGRESS_HTTPS_PORT }}:8443 {{ .INGRESS_HTTP_PORT }}:8080
-
-  patch-secrets:
-    desc: Update secrets with random values
-    vars:
-      CONTEXT: na
-      SECRET_NS: na
-      SECRET_NAME: na
-      SECRET_KEY: na
-      SECRET_VALUE:
-        sh: minikube ssh 'cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 28 | head -n 1'
-    cmds:
-      # - kubectl wait -n {{ .SECRET_NS }} --for=create secret/{{ .SECRET_NAME }} --timeout=10m
-      - |-
-        kubectl patch -n {{ .SECRET_NS }} secret {{ .SECRET_NAME }} --patch='{"stringData": { {{ .SECRET_KEY | toJson }}: {{ .SECRET_VALUE | toJson }} }}'
+      - kubectl --context {{ .CONTEXT }} wait --all-namespaces --for condition=ready --timeout=60s pods -l app.kubernetes.io/name=argocd-repo-server
+      - kubectl --context {{ .CONTEXT }} --server-side=true apply -f clusters/{{ .CLUSTER }}.cluster.yaml --force-conflicts
+      - kubectl config set-context --current --namespace=argocd
+      - find app-of-apps -name '*.as.yaml' -exec argocd --core --kube-context {{ .CONTEXT }} appset create {} --upsert ';'
 
   refresh:
-    desc: Sends webhook to local argocd (https://argocd.localho.st:8443) telling it to refresh the apps that changed in the last commit. Watches for new commits
+    desc: Sends webhook to local argocd (https://argocd.localho.st:8443) telling it
+      to refresh the apps that changed in the last commit. Watches for new
+      commits
     vars:
       GIT_PORT: 5555
+      GIT_IP:
+        sh: ip -json route get 1 | jq -r '.[0].prefsrc'
       INGRESS_HTTPS_PORT: 8443
-      REPO: "http://host.minikube.internal:{{ .GIT_PORT }}/.git"
+      REPO: "http://{{ .GIT_IP }}:{{ .GIT_PORT }}/.git"
       ARGOCD_SERVER: "https://argocd.localho.st:{{ .INGRESS_HTTPS_PORT }}"
     cmds:
-      - watchexec -i .git/refs/heads/* -- argocd-webhook-trigger {{ .REPO }} {{ .ARGOCD_SERVER }} -k
+      - watchexec -i .git/refs/heads/* -- argocd-webhook-trigger {{ .REPO }} {{
+        .ARGOCD_SERVER }} -k

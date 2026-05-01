@@ -1,29 +1,32 @@
 # Development tools required
 
 ```bash
-cargo install watchexec-cli
-cargo install git-serve
 cargo install argocd-webhook-trigger
+cargo install watchexec-cli
+mise install
 ```
 
-# Bootstrap local cluster
+System dependencies: Docker, curl, and jq.
+
+# Bootstrap a cluster
 
 ```bash
-# Start k8s cluster
-$ minikube start --driver docker --extra-config=kubelet.housekeeping-interval=10s 
+# Optionally start a local development cluster
+$ task create-cluster
 
-# Serve the local git repo in the background (required for local development)
-$ task git-serve &
-
-# Bootstrap the kubernetes cluster
-$ task bootstrap -- local
-
-# Open a tunnel from localhost to the istio gateway on ports 8443:443 and 8080:80
-$ task tunnel &
+# Bootstrap the current kubectl context with clusters/dev.cluster.yaml
+$ task bootstrap -- dev
 
 # Refresh argocd apps on local commit in the background (so we don't have to wait 3 minutes)
 $ task refresh &
 ```
+
+The bootstrap image registry currently assumes a single-node cluster. The host
+pushes to `localhost:5000` through `kubectl port-forward`, and the node pulls the
+same image from `localhost:5000` because the registry pod uses host networking.
+This can work for local or remote single-node clusters, but multi-node clusters
+will need a stable registry endpoint and container runtime trust/configuration on
+each node.
 
 # Troubleshooting
 

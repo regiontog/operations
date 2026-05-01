@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: operations-bootstrap-registry
+  namespace: bootstrap-system
+spec:
+  selector:
+    app.kubernetes.io/name: operations-bootstrap-registry
+  ports:
+    - name: registry
+      port: 5000
+      targetPort: registry

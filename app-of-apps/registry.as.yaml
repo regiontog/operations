@@ -1,8 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: patform
-  namespace: argocd
+  name: registry
 spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
@@ -16,16 +15,16 @@ spec:
         requeueAfterSeconds: 60
   template:
     metadata:
-      name: "patform-{{ .env }}"
+      name: registry-{{ .env }}
     spec:
-      destination:
-        namespace: argocd
-        server: "{{ .server }}"
       project: default
       source:
-        path: apps/platform
+        path: apps/registry/base
         repoURL: "{{ .repoURL }}"
         targetRevision: "{{ .targetRevision }}"
+      destination:
+        namespace: bootstrap-system
+        server: "{{ .server }}"
       syncPolicy:
         automated:
           selfHeal: true

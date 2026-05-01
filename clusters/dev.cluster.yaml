@@ -1,14 +1,14 @@
 apiVersion: app-decisions.example.com/v1beta1
 kind: AppDecision
 metadata:
-  name: local
+  name: dev
   namespace: argocd
   labels:
     type.app-decisions.example.com: "cluster"
 status:
   decisions:
-    - repoURL: "http://host.minikube.internal:5555/.git"
+    - repoURL: "http://forgejo-http.forgejo.svc.cluster.local:3000/operations/operations.git"
       targetRevision: HEAD
       server: https://kubernetes.default.svc
       clusterName: in-cluster
-      env: local
+      env: dev
