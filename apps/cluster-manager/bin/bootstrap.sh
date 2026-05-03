@@ -29,11 +29,16 @@ kubectl -n argocd wait --for=condition=available --timeout=180s deployment/argoc
 echo "Applying cluster decision: ${cluster_file}"
 kubectl --server-side=true apply -f "${cluster_file}" --force-conflicts
 
+echo "Deleting legacy cluster-bootstrap ApplicationSet"
+kubectl -n argocd delete applicationset cluster-bootstrap --ignore-not-found=true || true
+
 echo "Applying root ApplicationSets"
 find app-of-apps -name '*.as.yaml' -type f | sort | while IFS= read -r appset; do
   echo "Applying ${appset}"
   kubectl -n argocd --server-side=true apply -f "${appset}" --force-conflicts
 done
+
+kubectl delete namespace bootstrap-system --ignore-not-found=true || true
 
 echo "Waiting for Forgejo"
 kubectl -n forgejo wait --for=create --timeout=300s service/forgejo-http
@@ -106,7 +111,7 @@ echo "Pushing operations repository snapshot to Forgejo"
 rm -rf .git
 git init
 git config user.name "Operations Bootstrap"
-git config user.email "operations-bootstrap@localhost"
+git config user.email "bootstrap@localhost"
 git add -A
 git commit -m "Bootstrap operations snapshot"
 

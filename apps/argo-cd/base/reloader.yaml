@@ -4,3 +4,15 @@ metadata:
   name: argocd-server
   annotations:
     configmap.reloader.stakater.com/reload: "argocd-cmd-params-cm"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: argocd-application-controller
+  annotations:
+    configmap.reloader.stakater.com/reload: "argocd-cmd-params-cm"
+spec:
+  template:
+    metadata:
+      annotations:
+        operations.regiontog.no/argocd-cmd-params-revision: "server-side-diff-v1"

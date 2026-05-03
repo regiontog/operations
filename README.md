@@ -1,8 +1,6 @@
 # Development tools required
 
 ```bash
-cargo install argocd-webhook-trigger
-cargo install watchexec-cli
 mise install
 ```
 
@@ -17,16 +15,45 @@ $ task create-cluster
 # Bootstrap the current kubectl context with clusters/dev.cluster.yaml
 $ task bootstrap -- dev
 
-# Refresh argocd apps on local commit in the background (so we don't have to wait 3 minutes)
-$ task refresh &
+# Push the repo snapshot and refresh image, then hard-refresh Argo CD apps
+$ task refresh -- dev
 ```
 
-The bootstrap image registry currently assumes a single-node cluster. The host
-pushes to `127.0.0.1:5000` through `kubectl port-forward`, and the node pulls the
-same image from `localhost:5000` because the registry pod uses host networking.
-This can work for local or remote single-node clusters, but multi-node clusters
-will need a stable registry endpoint and container runtime trust/configuration on
-each node.
+## Private cluster access
+
+The development overlay installs a WireGuard VPN for laptop access, PowerDNS for
+private DNS, and a fixed ClusterIP service in front of the Istio ingress gateway.
+The laptop peer is intentionally split-tunnel only:
+
+- `10.96.53.53/32` routes to the PowerDNS recursor.
+- `10.96.80.80/32` routes to the private Istio ingress service.
+
+The PowerDNS recursor forwards `dev.internal` to the in-cluster authoritative
+PowerDNS server and forwards other queries to Cloudflare DNS.
+
+After Argo CD has synced the WireGuard resources, fetch the generated laptop
+configuration with:
+
+```bash
+kubectl -n wireguard get secret laptop-vpn-peer-configs \
+  -o jsonpath='{.data.alan-laptop}' | base64 -d
+```
+
+For the local k0s Docker cluster, `task create-cluster` publishes UDP NodePort
+`31820` on the host and the generated WireGuard endpoint is `127.0.0.1:31820`.
+For a remote cluster, change `spec.externalAddress` in
+`apps/wireguard-access/overlays/dev/wireguard.yaml` to the node or load balancer
+address reachable from the laptop. Also replace the development PowerDNS API key
+in `apps/private-dns/overlays/dev/secret.yaml` before using this outside a local
+cluster.
+
+The cluster-manager namespace contains the bootstrap service account and the
+registry used by bootstrap and refresh. The registry currently assumes a
+single-node cluster. The host pushes to `127.0.0.1:5000` through `kubectl
+port-forward`, and the node pulls the same image from `localhost:5000` because
+the registry pod uses host networking. This can work for local or remote
+single-node clusters, but multi-node clusters will need a stable registry
+endpoint and container runtime trust/configuration on each node.
 
 # Troubleshooting
 

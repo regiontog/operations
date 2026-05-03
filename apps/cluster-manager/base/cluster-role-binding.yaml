@@ -1,12 +1,12 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: operations-bootstrap-cluster-admin
+  name: bootstrap-cluster-admin
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: cluster-admin
 subjects:
   - kind: ServiceAccount
-    name: operations-bootstrap
-    namespace: bootstrap-system
+    name: bootstrap
+    namespace: cluster-manager

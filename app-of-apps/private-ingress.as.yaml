@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: cluster-bootstrap
+  name: private-ingress
 spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
@@ -15,18 +15,20 @@ spec:
         requeueAfterSeconds: 60
   template:
     metadata:
-      name: cluster-bootstrap-{{ .env }}
+      name: private-ingress-{{ .env }}
     spec:
       project: default
       source:
-        path: apps/cluster-bootstrap/base
+        path: apps/private-ingress/overlays/{{ .env }}
         repoURL: "{{ .repoURL }}"
         targetRevision: "{{ .targetRevision }}"
       destination:
-        namespace: bootstrap-system
+        namespace: istio-ingress
         server: "{{ .server }}"
       syncPolicy:
         automated:
+          prune: true
           selfHeal: true
         syncOptions:
           - CreateNamespace=true
+

@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: registry
+  name: private-dns
 spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
@@ -15,18 +15,24 @@ spec:
         requeueAfterSeconds: 60
   template:
     metadata:
-      name: registry-{{ .env }}
+      name: private-dns-{{ .env }}
+      annotations:
+        argocd.argoproj.io/compare-options: ServerSideDiff=true
     spec:
       project: default
       source:
-        path: apps/registry/base
+        path: apps/private-dns/overlays/{{ .env }}
         repoURL: "{{ .repoURL }}"
         targetRevision: "{{ .targetRevision }}"
       destination:
-        namespace: cluster-manager
+        namespace: powerdns
         server: "{{ .server }}"
       syncPolicy:
         automated:
+          prune: true
           selfHeal: true
+        retry:
+          limit: 10
         syncOptions:
           - CreateNamespace=true
+          - ServerSideApply=true

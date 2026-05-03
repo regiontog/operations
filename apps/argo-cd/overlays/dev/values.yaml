@@ -5,7 +5,7 @@ metadata:
   annotations:
     config.kubernetes.io/local-config: "true"
 data:
-  domain: argocd.localho.st
+  domain: argocd.dev.internal
   ingressHttpsPort: 8443
   certIssuer: selfsigned-cluster-issuer
   certIssuerKind: ClusterIssuer

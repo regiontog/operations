@@ -1,0 +1,237 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pdns-auth-sql
+data:
+  schema.sql: |
+    PRAGMA foreign_keys = 1;
+
+    CREATE TABLE domains (
+      id                    INTEGER PRIMARY KEY,
+      name                  VARCHAR(255) NOT NULL COLLATE NOCASE,
+      master                VARCHAR(128) DEFAULT NULL,
+      last_check            INTEGER DEFAULT NULL,
+      type                  VARCHAR(8) NOT NULL,
+      notified_serial       INTEGER DEFAULT NULL,
+      account               VARCHAR(40) DEFAULT NULL,
+      options               VARCHAR(65535) DEFAULT NULL,
+      catalog               VARCHAR(255) DEFAULT NULL
+    );
+
+    CREATE UNIQUE INDEX name_index ON domains(name);
+    CREATE INDEX catalog_idx ON domains(catalog);
+
+    CREATE TABLE records (
+      id                    INTEGER PRIMARY KEY,
+      domain_id             INTEGER DEFAULT NULL,
+      name                  VARCHAR(255) DEFAULT NULL,
+      type                  VARCHAR(10) DEFAULT NULL,
+      content               VARCHAR(65535) DEFAULT NULL,
+      ttl                   INTEGER DEFAULT NULL,
+      prio                  INTEGER DEFAULT NULL,
+      disabled              BOOLEAN DEFAULT 0,
+      ordername             VARCHAR(255),
+      auth                  BOOL DEFAULT 1,
+      FOREIGN KEY(domain_id) REFERENCES domains(id) ON DELETE CASCADE ON UPDATE CASCADE
+    );
+
+    CREATE INDEX records_lookup_idx ON records(name, type);
+    CREATE INDEX records_lookup_id_idx ON records(domain_id, name, type);
+    CREATE INDEX records_order_idx ON records(domain_id, ordername);
+
+    CREATE TABLE supermasters (
+      ip                    VARCHAR(64) NOT NULL,
+      nameserver            VARCHAR(255) NOT NULL COLLATE NOCASE,
+      account               VARCHAR(40) NOT NULL
+    );
+
+    CREATE UNIQUE INDEX ip_nameserver_pk ON supermasters(ip, nameserver);
+
+    CREATE TABLE comments (
+      id                    INTEGER PRIMARY KEY,
+      domain_id             INTEGER NOT NULL,
+      name                  VARCHAR(255) NOT NULL,
+      type                  VARCHAR(10) NOT NULL,
+      modified_at           INT NOT NULL,
+      account               VARCHAR(40) DEFAULT NULL,
+      comment               VARCHAR(65535) NOT NULL,
+      FOREIGN KEY(domain_id) REFERENCES domains(id) ON DELETE CASCADE ON UPDATE CASCADE
+    );
+
+    CREATE INDEX comments_idx ON comments(domain_id, name, type);
+    CREATE INDEX comments_order_idx ON comments (domain_id, modified_at);
+
+    CREATE TABLE domainmetadata (
+      id                    INTEGER PRIMARY KEY,
+      domain_id             INT NOT NULL,
+      kind                  VARCHAR(32) COLLATE NOCASE,
+      content               TEXT,
+      FOREIGN KEY(domain_id) REFERENCES domains(id) ON DELETE CASCADE ON UPDATE CASCADE
+    );
+
+    CREATE INDEX domainmetaidindex ON domainmetadata(domain_id);
+
+    CREATE TABLE cryptokeys (
+      id                    INTEGER PRIMARY KEY,
+      domain_id             INT NOT NULL,
+      flags                 INT NOT NULL,
+      active                BOOL,
+      published             BOOL DEFAULT 1,
+      content               TEXT,
+      FOREIGN KEY(domain_id) REFERENCES domains(id) ON DELETE CASCADE ON UPDATE CASCADE
+    );
+
+    CREATE INDEX domainidindex ON cryptokeys(domain_id);
+
+    CREATE TABLE tsigkeys (
+      id                    INTEGER PRIMARY KEY,
+      name                  VARCHAR(255) COLLATE NOCASE,
+      algorithm             VARCHAR(50) COLLATE NOCASE,
+      secret                VARCHAR(255)
+    );
+
+    CREATE UNIQUE INDEX namealgoindex ON tsigkeys(name, algorithm);
+  zone.sql: |
+    INSERT OR IGNORE INTO domains (name, type) VALUES ('dev.internal', 'NATIVE');
+
+    INSERT INTO records (domain_id, name, type, content, ttl, prio, disabled, auth)
+    SELECT id, 'dev.internal', 'SOA', 'ns1.dev.internal hostmaster.dev.internal 1 3600 600 604800 60', 60, NULL, 0, 1
+    FROM domains
+    WHERE name = 'dev.internal'
+      AND NOT EXISTS (SELECT 1 FROM records WHERE name = 'dev.internal' AND type = 'SOA');
+
+    INSERT INTO records (domain_id, name, type, content, ttl, prio, disabled, auth)
+    SELECT id, 'dev.internal', 'NS', 'ns1.dev.internal', 60, NULL, 0, 1
+    FROM domains
+    WHERE name = 'dev.internal'
+      AND NOT EXISTS (SELECT 1 FROM records WHERE name = 'dev.internal' AND type = 'NS' AND content = 'ns1.dev.internal');
+
+    INSERT INTO records (domain_id, name, type, content, ttl, prio, disabled, auth)
+    SELECT id, 'ns1.dev.internal', 'A', '10.96.53.54', 60, NULL, 0, 1
+    FROM domains
+    WHERE name = 'dev.internal'
+      AND NOT EXISTS (SELECT 1 FROM records WHERE name = 'ns1.dev.internal' AND type = 'A');
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pdns-auth-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pdns-auth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pdns-auth
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pdns-auth
+    spec:
+      initContainers:
+        - name: init-sqlite
+          image: alpine/sqlite:3.51.2
+          command:
+            - /bin/sh
+            - -ceu
+          args:
+            - |
+              db=/var/lib/powerdns/pdns.sqlite3
+              if ! sqlite3 "$db" "select 1 from domains limit 1" >/dev/null 2>&1; then
+                sqlite3 "$db" < /sql/schema.sql
+              fi
+              sqlite3 "$db" < /sql/zone.sql
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/powerdns
+            - name: sql
+              mountPath: /sql
+      containers:
+        - name: pdns-auth
+          image: powerdns/pdns-auth-50:5.0.4
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          command:
+            - pdns_server
+          args:
+            - --guardian=no
+            - --daemon=no
+            - --local-address=0.0.0.0
+            - --local-port=5300
+            - --launch=gsqlite3
+            - --gsqlite3-database=/var/lib/powerdns/pdns.sqlite3
+            - --webserver=yes
+            - --webserver-address=0.0.0.0
+            - --webserver-port=8081
+            - --webserver-allow-from=0.0.0.0/0,::/0
+            - --api=yes
+            - --api-key=$(PDNS_API_KEY)
+            - --loglevel=4
+          env:
+            - name: PDNS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: powerdns-api
+                  key: api-key
+          ports:
+            - name: dns-udp
+              containerPort: 5300
+              protocol: UDP
+            - name: dns-tcp
+              containerPort: 5300
+              protocol: TCP
+            - name: api
+              containerPort: 8081
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: api
+          livenessProbe:
+            tcpSocket:
+              port: dns-tcp
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/powerdns
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: pdns-auth-data
+        - name: sql
+          configMap:
+            name: pdns-auth-sql
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pdns-auth
+spec:
+  type: ClusterIP
+  clusterIP: 10.96.53.54
+  selector:
+    app.kubernetes.io/name: pdns-auth
+  ports:
+    - name: dns-udp
+      port: 53
+      targetPort: dns-udp
+      protocol: UDP
+    - name: dns-tcp
+      port: 53
+      targetPort: dns-tcp
+      protocol: TCP
+    - name: api
+      port: 8081
+      targetPort: api
+      protocol: TCP

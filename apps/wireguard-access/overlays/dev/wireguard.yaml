@@ -1,0 +1,47 @@
+apiVersion: vpn.wireguard-operator.io/v1alpha1
+kind: Wireguard
+metadata:
+  name: laptop-vpn
+  namespace: wireguard
+spec:
+  peerCIDR: 10.88.0.0/24
+  mtu: "1420"
+  externalAddress: 127.0.0.1
+  serviceType: NodePort
+  port: 31820
+  dns: 10.96.53.53
+  dnsSearchDomain: dev.internal
+  enableIpForwardOnPodInit: true
+
+---
+apiVersion: vpn.wireguard-operator.io/v1alpha1
+kind: WireguardPeer
+metadata:
+  name: alan-laptop
+  namespace: wireguard
+spec:
+  wireguardRef: laptop-vpn
+  allowedIPs: 10.96.53.53/32, 10.96.80.80/32
+  dns: 10.96.53.53
+  dnsSearchDomain: dev.internal
+  egressNetworkPolicies:
+    - action: Accept
+      protocol: UDP
+      to:
+        ip: 10.96.53.53
+        port: 53
+    - action: Accept
+      protocol: TCP
+      to:
+        ip: 10.96.53.53
+        port: 53
+    - action: Accept
+      protocol: TCP
+      to:
+        ip: 10.96.80.80
+        port: 8443
+    - action: Accept
+      protocol: TCP
+      to:
+        ip: 10.96.80.80
+        port: 8080

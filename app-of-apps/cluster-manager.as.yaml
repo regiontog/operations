@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
-  name: registry
+  name: cluster-manager
 spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
@@ -15,11 +15,11 @@ spec:
         requeueAfterSeconds: 60
   template:
     metadata:
-      name: registry-{{ .env }}
+      name: cluster-manager-{{ .env }}
     spec:
       project: default
       source:
-        path: apps/registry/base
+        path: apps/cluster-manager/base
         repoURL: "{{ .repoURL }}"
         targetRevision: "{{ .targetRevision }}"
       destination:
