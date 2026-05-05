@@ -1,3 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pdns-recursor-lua
+data:
+  recursor.lua: |
+    addNTA('dev.internal', 'Internal unsigned zone served by pdns-auth')
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -24,6 +33,7 @@ spec:
             - --allow-from=0.0.0.0/0,::/0
             - --forward-zones=dev.internal=10.96.53.54:53
             - --forward-zones-recurse=.=1.1.1.1;8.8.8.8
+            - --lua-config-file=/etc/powerdns/recursor.lua
             - --loglevel=4
           ports:
             - name: dns-udp
@@ -38,6 +48,15 @@ spec:
           livenessProbe:
             tcpSocket:
               port: dns-tcp
+          volumeMounts:
+            - name: lua-config
+              mountPath: /etc/powerdns/recursor.lua
+              subPath: recursor.lua
+              readOnly: true
+      volumes:
+        - name: lua-config
+          configMap:
+            name: pdns-recursor-lua
 
 ---
 apiVersion: v1
